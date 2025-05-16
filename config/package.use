@@ -1,0 +1,25 @@
+# Common Package USE Flags for AI Workstation
+# Copy these to /etc/portage/package.use/
+
+# NVIDIA and CUDA support
+x11-drivers/nvidia-drivers uvm tools
+media-libs/mesa -video_cards_nouveau
+app-emulation/docker device-mapper
+virtual/opencl nvidia
+
+# Python and ML libraries
+dev-lang/python tk
+dev-python/matplotlib tk cairo
+sci-libs/scipy sparse
+
+# Wayland support
+gui-wm/hyprland X systemd
+media-libs/mesa wayland
+gui-libs/gtk wayland
+dev-qt/qtgui egl
+media-libs/libglvnd X
+gui-libs/wlroots x11-backend
+
+# Audio
+media-video/pipewire sound-server jack-sdk
+media-sound/pulseaudio-daemon -X
