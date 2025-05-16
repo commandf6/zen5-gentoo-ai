@@ -1,17 +1,17 @@
 #!/bin/bash
 # =============================================================================
-# umount-and-reboot.sh - Safely unmount and reboot the system
+# unmount-and-reboot.sh - Safely unmount and reboot the system
 # =============================================================================
 
 set -euo pipefail
 trap 'echo "[!] Error on line $LINENO: $BASH_COMMAND"; exit 1' ERR
 
-# Script directory detection
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PARENT_DIR="$(dirname "$SCRIPT_DIR")"
+# Use fixed paths instead of dynamic detection
+INSTALL_DIR="/tmp/zen5-gentoo-ai"
+SCRIPTS_DIR="${INSTALL_DIR}/scripts"
 
 # Source functions
-source "$SCRIPT_DIR/scripts/functions.sh"
+source "${SCRIPTS_DIR}/functions.sh"
 
 # Configuration
 verify_root_user

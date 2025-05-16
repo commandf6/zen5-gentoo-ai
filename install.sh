@@ -1,3 +1,4 @@
+
 #!/bin/bash
 # =============================================================================
 # install.sh - Main installation script
@@ -6,11 +7,32 @@
 set -euo pipefail
 trap 'echo "[!] Error on line $LINENO: $BASH_COMMAND"; exit 1' ERR
 
-# Detect script directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Installation directory - fixed location
+INSTALL_DIR="/tmp/zen5-gentoo-ai"
+SCRIPTS_DIR="${INSTALL_DIR}/scripts"
+
+# Ensure we're in the right directory
+if [[ ! -d "${INSTALL_DIR}" ]]; then
+    echo "Creating installation directory at ${INSTALL_DIR}"
+    mkdir -p "${INSTALL_DIR}"
+    # If this is the first run and directory was just created,
+    # the user should copy all files to this location
+    echo "Please copy all installation files to ${INSTALL_DIR}"
+    echo "Then run this script again."
+    exit 1
+fi
+
+# Change to the installation directory
+cd "${INSTALL_DIR}"
 
 # Source functions
-source "$SCRIPT_DIR/scripts/functions.sh"
+if [[ ! -f "${SCRIPTS_DIR}/functions.sh" ]]; then
+    echo "Error: functions.sh not found in ${SCRIPTS_DIR}"
+    echo "Please ensure all installation files are in ${INSTALL_DIR}"
+    exit 1
+fi
+
+source "${SCRIPTS_DIR}/functions.sh"
 
 # Welcome message
 clear
@@ -58,10 +80,14 @@ EOF
     
     case "$phase" in
         1)
-            run_preparation_phase
+            "${SCRIPTS_DIR}/1-setup-partitions.sh"
             ;;
         2)
-            run_base_system_phase
+            "${SCRIPTS_DIR}/2-setup-encryption.sh"
+            "${SCRIPTS_DIR}/3-setup-lvm.sh"
+            "${SCRIPTS_DIR}/4-create-filesystems.sh"
+            "${SCRIPTS_DIR}/5-mount-all.sh"
+            "${SCRIPTS_DIR}/6-install-base.sh"
             ;;
         3)
             echo -e "${YELLOW}Phase 3 requires manual chroot. Instructions:${NC}"
@@ -72,8 +98,12 @@ EOF
             display_post_reboot_instructions
             ;;
         5)
-            run_preparation_phase
-            run_base_system_phase
+            "${SCRIPTS_DIR}/1-setup-partitions.sh"
+            "${SCRIPTS_DIR}/2-setup-encryption.sh"
+            "${SCRIPTS_DIR}/3-setup-lvm.sh"
+            "${SCRIPTS_DIR}/4-create-filesystems.sh"
+            "${SCRIPTS_DIR}/5-mount-all.sh"
+            "${SCRIPTS_DIR}/6-install-base.sh"
             echo
             echo -e "${GREEN}Base installation completed successfully!${NC}"
             echo

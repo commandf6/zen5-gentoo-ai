@@ -6,12 +6,13 @@
 set -euo pipefail
 trap 'echo "[!] Error on line $LINENO: $BASH_COMMAND"; exit 1' ERR
 
-# Script directory detection
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PARENT_DIR="$(dirname "$SCRIPT_DIR")"
+# Use fixed paths instead of dynamic detection
+# Note: Inside chroot, our install path is different
+INSTALL_DIR="/root/zen5-gentoo-ai"
+SCRIPTS_DIR="${INSTALL_DIR}/scripts"
 
 # Source functions
-source "$SCRIPT_DIR/functions.sh"
+source "${SCRIPTS_DIR}/functions.sh"
 
 # Configuration
 MARKER="/tmp/.07-chroot.done"
@@ -115,7 +116,7 @@ main() {
     
     echo
     echo "Exit the chroot environment with 'exit', then run the following:"
-    echo "cd $PARENT_DIR && bash scripts/umount-and-reboot.sh"
+    echo "cd /tmp/zen5-gentoo-ai && bash scripts/unmount-and-reboot.sh"
 }
 
 is_inside_chroot() {
@@ -183,7 +184,7 @@ install_kernel() {
             ;;
         3)
             info "Using provided Zen5 AI-optimized kernel config..."
-            cp /root/zen5-gentoo-ai/config/kernel.config .config
+            cp ${INSTALL_DIR}/config/kernel.config .config
             make olddefconfig
             ;;
         4)

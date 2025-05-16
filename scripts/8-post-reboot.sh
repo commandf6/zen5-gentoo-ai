@@ -6,12 +6,12 @@
 set -euo pipefail
 trap 'echo "[!] Error on line $LINENO: $BASH_COMMAND"; exit 1' ERR
 
-# Script directory detection
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PARENT_DIR="$(dirname "$SCRIPT_DIR")"
+# Use fixed paths instead of dynamic detection
+INSTALL_DIR="/root/zen5-gentoo-ai"
+SCRIPTS_DIR="${INSTALL_DIR}/scripts"
 
 # Source functions
-source "$SCRIPT_DIR/functions.sh"
+source "${SCRIPTS_DIR}/functions.sh"
 
 # Configuration
 MARKER="/tmp/.08-post-reboot.done"
@@ -169,6 +169,13 @@ setup_ai_environment() {
         if confirm_action "Install transformers and related libraries?"; then
             su - "$USERNAME" -c "source /tensor_lab/venv/bin/activate && pip install transformers datasets accelerate"
         fi
+    fi
+    
+    # Copy TensorLab guide to directory
+    if [[ -f "${INSTALL_DIR}/tensorlab-guide.md" ]]; then
+        info "Copying TensorLab guide..."
+        cp "${INSTALL_DIR}/tensorlab-guide.md" "/tensor_lab/README.md"
+        chown "$USERNAME:$USERNAME" "/tensor_lab/README.md"
     fi
     
     # Create user environment shortcuts

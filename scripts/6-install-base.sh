@@ -6,12 +6,12 @@
 set -euo pipefail
 trap 'echo "[!] Error on line $LINENO: $BASH_COMMAND"; exit 1' ERR
 
-# Script directory detection
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PARENT_DIR="$(dirname "$SCRIPT_DIR")"
+# Use fixed paths instead of dynamic detection
+INSTALL_DIR="/tmp/zen5-gentoo-ai"
+SCRIPTS_DIR="${INSTALL_DIR}/scripts"
 
 # Source functions
-source "$SCRIPT_DIR/functions.sh"
+source "${SCRIPTS_DIR}/functions.sh"
 
 # Configuration
 MARKER="/tmp/.06-base.done"
@@ -92,7 +92,7 @@ EOF
 }
 
 select_stage3_tarball() {
-    local stage3_dir="$PARENT_DIR/stage3"
+    local stage3_dir="${INSTALL_DIR}/stage3"
     mkdir -p "$stage3_dir"
     
     # Check if a stage3 is already provided

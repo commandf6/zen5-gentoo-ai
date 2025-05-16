@@ -3,6 +3,11 @@
 # functions.sh - Shared functions for installation scripts
 # =============================================================================
 
+# Installation directory - fixed location
+INSTALL_DIR="/tmp/zen5-gentoo-ai"
+SCRIPTS_DIR="${INSTALL_DIR}/scripts"
+CONFIG_DIR="${INSTALL_DIR}/config"
+
 # Color codes
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -130,11 +135,11 @@ check_marker() {
 }
 
 display_main_menu() {
-    local config_file="$SCRIPT_DIR/config/system.conf"
+    local config_file="${CONFIG_DIR}/system.conf"
     
     # If config doesn't exist yet, create default
     if [[ ! -f "$config_file" ]]; then
-        mkdir -p "$SCRIPT_DIR/config"
+        mkdir -p "${CONFIG_DIR}"
         cat > "$config_file" <<EOF
 # System Configuration
 HOSTNAME="io"
@@ -243,17 +248,29 @@ parse_config() {
     fi
 }
 
+# Function to run scripts with fixed paths
+run_script() {
+    local script_name="$1"
+    local script_path="${SCRIPTS_DIR}/${script_name}"
+    
+    if [[ ! -f "${script_path}" ]]; then
+        die "Script not found: ${script_path}"
+    fi
+    
+    bash "${script_path}" || die "Script ${script_name} failed"
+}
+
 run_preparation_phase() {
     info "Starting preparation phase..."
     
     # Run partition script
-    "$SCRIPT_DIR/scripts/1-setup-partitions.sh" || die "Partitioning failed"
+    run_script "1-setup-partitions.sh"
     
     # Run encryption script
-    "$SCRIPT_DIR/scripts/2-setup-encryption.sh" || die "Encryption setup failed"
+    run_script "2-setup-encryption.sh"
     
     # Run LVM script
-    "$SCRIPT_DIR/scripts/3-setup-lvm.sh" || die "LVM setup failed"
+    run_script "3-setup-lvm.sh"
     
     info "Preparation phase completed successfully"
 }
@@ -262,18 +279,19 @@ run_base_system_phase() {
     info "Starting base system phase..."
     
     # Create filesystems
-    "$SCRIPT_DIR/scripts/4-create-filesystems.sh" || die "Filesystem creation failed"
+    run_script "4-create-filesystems.sh"
     
     # Mount all
-    "$SCRIPT_DIR/scripts/5-mount-all.sh" || die "Mounting filesystems failed"
+    run_script "5-mount-all.sh"
     
     # Install base system
-    "$SCRIPT_DIR/scripts/6-install-base.sh" || die "Base system installation failed"
+    run_script "6-install-base.sh"
     
     # Copy installation files to chroot
     info "Copying installation files to chroot environment..."
-    cp -r "$SCRIPT_DIR" /mnt/gentoo/root/zen5-gentoo-ai
-    cp "$CONFIG_FILE" /mnt/gentoo/root/zen5-gentoo-ai/config/system.conf
+    mkdir -p /mnt/gentoo/root/zen5-gentoo-ai
+    cp -r "${INSTALL_DIR}"/* /mnt/gentoo/root/zen5-gentoo-ai/
+    cp "${CONFIG_FILE}" /mnt/gentoo/root/zen5-gentoo-ai/config/system.conf
     
     info "Base system phase completed successfully"
 }
@@ -298,7 +316,7 @@ display_chroot_instructions() {
     echo "     exit"
     echo
     echo "  5. Unmount and reboot:"
-    echo "     cd $SCRIPT_DIR && bash scripts/umount-and-reboot.sh"
+    echo "     cd ${INSTALL_DIR} && bash scripts/unmount-and-reboot.sh"
     echo
 }
 
