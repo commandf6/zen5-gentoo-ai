@@ -153,8 +153,7 @@ EOF
 install_kernel() {
     # Install kernel sources and tools
     info "Installing kernel sources and tools..."
-    emerge --ask sys-kernel/gentoo-sources sys-kernel/linux-firmware \
-           sys-kernel/dracut sys-apps/pciutils || die "Failed to install kernel packages"
+    emerge --ask sys-kernel/gentoo-sources sys-kernel/linux-firmware || die "Failed to install kernel packages"
 
     # Setup kernel symlink
     eselect kernel list
@@ -202,8 +201,83 @@ install_kernel() {
             ;;
     esac
     
+    # Choose initramfs generator
+    echo
+    echo "Initramfs generator options:"
+    echo "1) Dracut (modern, modular approach)"
+    echo "2) Genkernel (traditional Gentoo approach)"
+    echo
+    read -p "Select initramfs generator [1]: " initramfs_option
+    initramfs_option=${initramfs_option:-1}
+    
+    # Install selected initramfs generator
+    case "$initramfs_option" in
+        1)
+            info "Installing and configuring Dracut..."
+            emerge --ask sys-kernel/dracut || die "Failed to install dracut"
+            use_dracut=true
+            ;;
+        2)
+            info "Installing and configuring Genkernel..."
+            emerge --ask sys-kernel/genkernel || die "Failed to install genkernel"
+            use_dracut=false
+            ;;
+        *)
+            die "Invalid option"
+            ;;
+    esac
+    
+    # Decide on LUKS naming convention (crucial for boot success)
+    if [ "$use_dracut" = true ]; then
+        # For dracut, recommend without underscore for better compatibility
+        echo
+        echo "LUKS naming convention for Dracut:"
+        echo "1) Use 'cryptroot' (without underscore, recommended for dracut)"
+        echo "2) Use 'crypt_root' (with underscore, current setting)"
+        echo
+        read -p "Select LUKS naming convention [1]: " luks_naming_option
+        luks_naming_option=${luks_naming_option:-1}
+        
+        if [ "$luks_naming_option" = "1" ]; then
+            # Update to name without underscore
+            NEW_LUKS_ROOT="cryptroot"
+            info "Switching to 'cryptroot' naming convention"
+        else
+            # Keep current naming
+            NEW_LUKS_ROOT="${LUKS_ROOT}"
+            info "Keeping '${LUKS_ROOT}' naming convention"
+        fi
+    else
+        # For genkernel, use with underscore for better compatibility
+        echo
+        echo "LUKS naming convention for Genkernel:"
+        echo "1) Use 'crypt_root' (with underscore, recommended for genkernel)"
+        echo "2) Use 'cryptroot' (without underscore)"
+        echo
+        read -p "Select LUKS naming convention [1]: " luks_naming_option
+        luks_naming_option=${luks_naming_option:-1}
+        
+        if [ "$luks_naming_option" = "1" ]; then
+            # Use name with underscore
+            NEW_LUKS_ROOT="crypt_root"
+            info "Using 'crypt_root' naming convention"
+        else
+            # Use name without underscore
+            NEW_LUKS_ROOT="cryptroot"
+            info "Using 'cryptroot' naming convention"
+        fi
+    fi
+    
+    # Update crypttab with the selected naming convention
+    info "Updating crypttab with selected naming convention..."
+    cat > /etc/crypttab <<EOF
+${NEW_LUKS_ROOT}     UUID=$(blkid -s UUID -o value ${DISK0}p3)    none luks,discard,tries=3
+${LUKS_TENSOR_A} UUID=$(blkid -s UUID -o value ${DISK0}p4)    none luks,discard,tries=1,nofail
+${LUKS_TENSOR_B} UUID=$(blkid -s UUID -o value ${DISK1}p1)    none luks,discard,tries=1,nofail
+EOF
+    
     # Build kernel if not using genkernel
-    if [[ "$kernel_config_option" != "2" ]]; then
+    if [ "$use_dracut" = true ] || [ "$kernel_config_option" != "2" ]; then
         info "Building kernel..."
         make -j$(nproc) || die "Kernel build failed"
         make modules_install || die "Module installation failed"
@@ -213,10 +287,12 @@ install_kernel() {
     # Get kernel version
     KVER=$(make kernelrelease)
     
-    # Configure dracut
-    info "Configuring dracut for initramfs generation..."
-    mkdir -p /etc/dracut.conf.d
-    cat > /etc/dracut.conf.d/encryption.conf <<EOF
+    # Generate initramfs based on selected tool
+    if [ "$use_dracut" = true ]; then
+        # Configure dracut
+        info "Configuring dracut for initramfs generation..."
+        mkdir -p /etc/dracut.conf.d
+        cat > /etc/dracut.conf.d/encryption.conf <<EOF
 add_dracutmodules+=" crypt dm rootfs-block lvm btrfs "
 omit_dracutmodules+=" plymouth "
 
@@ -235,17 +311,35 @@ show_modules="yes"
 early_microcode="yes"
 EOF
 
-    # Create crypttab
-    info "Creating /etc/crypttab"
-    cat > /etc/crypttab <<EOF
-${LUKS_ROOT}     UUID=$(blkid -s UUID -o value ${DISK0}p3)    none luks,discard,tries=3
-${LUKS_TENSOR_A} UUID=$(blkid -s UUID -o value ${DISK0}p4)    none luks,discard,tries=1,nofail
-${LUKS_TENSOR_B} UUID=$(blkid -s UUID -o value ${DISK1}p1)    none luks,discard,tries=1,nofail
-EOF
-
-    # Generate initramfs
-    info "Generating initramfs..."
-    dracut --force --kver "$KVER" || die "Initramfs creation failed"
+        # Generate initramfs with dracut
+        info "Generating initramfs with dracut..."
+        dracut --force --kver "$KVER" || die "Dracut initramfs creation failed"
+        
+        # Store the dracut command for future reference
+        echo "dracut --force --kver $KVER" > /root/last_initramfs_command.txt
+        
+    else
+        # Configure genkernel for our specific needs
+        info "Generating initramfs with genkernel..."
+        if [ "$kernel_config_option" = "3" ]; then
+            # Use existing kernel configuration with genkernel
+            genkernel --install --luks --lvm --btrfs --no-menuconfig --kernel-config=/usr/src/linux/.config initramfs || die "Genkernel initramfs creation failed"
+        else
+            # Let genkernel handle everything
+            genkernel --install --luks --lvm --btrfs all || die "Genkernel full build failed"
+        fi
+        
+        # Store the genkernel command for future reference
+        if [ "$kernel_config_option" = "3" ]; then
+            echo "genkernel --install --luks --lvm --btrfs --no-menuconfig --kernel-config=/usr/src/linux/.config initramfs" > /root/last_initramfs_command.txt
+        else
+            echo "genkernel --install --luks --lvm --btrfs all" > /root/last_initramfs_command.txt
+        fi
+    fi
+    
+    # Store the selected initramfs generator and naming for future reference
+    echo "INITRAMFS_GENERATOR=$initramfs_option" > /root/boot_config.txt
+    echo "LUKS_NAME=${NEW_LUKS_ROOT}" >> /root/boot_config.txt
     
     info "Kernel and initramfs built successfully"
 }
@@ -255,15 +349,37 @@ install_bootloader() {
     info "Installing GRUB bootloader..."
     emerge --ask sys-boot/grub:2 sys-boot/efibootmgr || die "Failed to install bootloader packages"
     
-    # Configure GRUB for LUKS
+    # Load saved boot configuration if exists
+    if [[ -f "/root/boot_config.txt" ]]; then
+        source /root/boot_config.txt
+    else
+        # Default values if not found
+        INITRAMFS_GENERATOR=1  # Default to dracut
+        LUKS_NAME="${LUKS_ROOT}"
+    fi
+    
+    # Configure GRUB for LUKS based on the selected initramfs generator
     info "Configuring GRUB for encrypted boot..."
-    cat > /etc/default/grub <<EOF
+    
+    if [ "$INITRAMFS_GENERATOR" = "1" ]; then
+        # Dracut-specific GRUB configuration
+        cat > /etc/default/grub <<EOF
 GRUB_DISTRIBUTOR="Gentoo"
 GRUB_TIMEOUT=5
-GRUB_CMDLINE_LINUX="rd.luks.uuid=$(blkid -s UUID -o value ${DISK0}p3) rd.luks.name=$(blkid -s UUID -o value ${DISK0}p3)=${LUKS_ROOT} root=/dev/mapper/${VG_OS}-${LV_ROOT} rootfstype=btrfs rootflags=subvol=@ dolvm"
+GRUB_CMDLINE_LINUX="rd.luks.uuid=$(blkid -s UUID -o value ${DISK0}p3) rd.luks.name=$(blkid -s UUID -o value ${DISK0}p3)=${LUKS_NAME} root=/dev/mapper/${VG_OS}-${LV_ROOT} rootfstype=btrfs rootflags=subvol=@ dolvm"
 GRUB_ENABLE_CRYPTODISK=y
 GRUB_DISABLE_OS_PROBER=false
 EOF
+    else
+        # Genkernel-specific GRUB configuration
+        cat > /etc/default/grub <<EOF
+GRUB_DISTRIBUTOR="Gentoo"
+GRUB_TIMEOUT=5
+GRUB_CMDLINE_LINUX="dolvm ${LUKS_NAME}=UUID=$(blkid -s UUID -o value ${DISK0}p3) root=/dev/mapper/${VG_OS}-${LV_ROOT} rootfstype=btrfs rootflags=subvol=@"
+GRUB_ENABLE_CRYPTODISK=y
+GRUB_DISABLE_OS_PROBER=false
+EOF
+    fi
 
     # Install GRUB to EFI
     info "Installing GRUB to EFI system partition..."
